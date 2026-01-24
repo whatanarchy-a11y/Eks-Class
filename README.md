@@ -3,8 +3,6 @@
 | 번호 | AWS 서비스 이름 |
 | ---- | ---------------- |
 | 1.   | eksctl CLI를 사용해 AWS EKS 클러스터 생성 |
-| 2.   | [Docker 기초](https://github.com/stacksimplify/docker-fundamentals) |
-| 3.   | [Kubernetes 기초](https://github.com/stacksimplify/kubernetes-fundamentals) |
 | 4.   | AWS EBS CSI 드라이버를 사용한 EKS 스토리지 |
 | 5.   | 애플리케이션 배포를 위한 Kubernetes 핵심 개념 |
 | 5.1  | Kubernetes - 시크릿 |
