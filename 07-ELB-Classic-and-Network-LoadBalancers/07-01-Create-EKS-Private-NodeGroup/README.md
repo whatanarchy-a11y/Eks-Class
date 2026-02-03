@@ -20,9 +20,9 @@ eksctl delete nodegroup eksdemo1-ng-public1 --cluster eksdemo1
 - Key option for the command is `--node-private-networking`
 
 ```
-eksctl create nodegroup --cluster=eksdemo1 \
-                        --region=us-east-1 \
-                        --name=eksdemo1-ng-private1 \
+eksctl create nodegroup --cluster=eksdemo2 \
+                        --region=ap-northeast-2 \
+                        --name=eksdemo2-ng-private2 \
                         --node-type=t3.medium \
                         --nodes-min=2 \
                         --nodes-max=4 \

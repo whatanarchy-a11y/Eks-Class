@@ -16,9 +16,9 @@
 - 클러스터 컨트롤 플레인 생성에 15~20분 소요됩니다.
 ```
 # 클러스터 생성
-eksctl create cluster --name=eksdemo1 \
-                      --region=us-east-1 \
-                      --zones=us-east-1a,us-east-1b \
+eksctl create cluster --name=eksdemo2 \
+                      --region=ap-northeast-2 \
+                      --zones=ap-northeast-2a,ap-northeast-2b \
                       --without-nodegroup 
 
 # 클러스터 목록 확인
