@@ -32,3 +32,21 @@
 - **레거시: 추후 사용 중단 예정** 
   - https://kubernetes.io/docs/concepts/storage/storage-classes/#aws-ebs
   - https://docs.aws.amazon.com/eks/latest/userguide/storage-classes.html
+
+
+## AWS Console 에서 resource 확인
+
+- root 가 아닌 aws configure 사용 계정으로 접속
+![alt text](image.png)
+
+- pod 의 json 내용 보기(k8s API 기능 그대로)
+![alt text](image-1.png)
+
+- yaml 형태로 보기, 차후 deploy yaml 로 사용하기 위한 백업 용도
+![alt text](image-2.png)
+
+- node 상태 보기 ( cpu , MM 등)
+![alt text](image-3.png)
+
+- 해당 사용 role , 계정 보기
+![alt text](image-4.png)

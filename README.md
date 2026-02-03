@@ -161,3 +161,82 @@
 - Kubernetes에서 DevOps와 마이크로서비스 배포를 배우고 싶은 초보자
 
 
+---
+# EKS에서 워커 노드 삭제 시 Pod 이전 여부와 시간 소요
+
+EKS에서 **워커 노드(노드 인스턴스)** 를 “정상 절차로” 제거하면, 그 노드에 있던 **대부분의 Pod는 다른 노드로 재스케줄(이전) 됩니다.**  
+다만 **어떻게 삭제하느냐**(drain 했는지, 노드그룹/ASG에서 스케일다운인지, 그냥 인스턴스 강제 종료인지)에 따라 결과와 시간이 크게 달라집니다.
+
+---
+
+## 1) 워커 노드 삭제 시 Pod “이전” 되나?
+
+### ✅ 일반적으로 “이전됨”(재생성/재배치)
+- **Deployment / ReplicaSet / Job / CronJob**: 노드에서 빠지면 다른 노드에 **새로 생성**됨(=재스케줄).
+- 노드가 **cordon + drain** 되면 kube-scheduler가 다른 노드로 배치.
+
+### ⚠️ 예외/주의 케이스
+- **DaemonSet Pod**: drain 시 기본적으로 “무시” 대상이라(옵션에 따라) *그 노드에만 있던 DaemonSet Pod는* 노드가 사라지면 같이 사라지고, **다른 노드에는 원래부터 DaemonSet이 떠있어야 정상**입니다(‘이전’ 개념이 아님).
+- **StatefulSet**: Pod는 다른 노드로 뜰 수 있지만,
+  - PV가 **EBS 같은 단일 AZ 볼륨**이면 **같은 AZ의 다른 노드**로만 옮겨질 가능성이 큼
+  - 볼륨 attach/detach 때문에 시간이 더 걸릴 수 있음
+- **PodDisruptionBudget(PDB)**: 동시에 내릴 수 있는 Pod 수를 제한해서 drain이 **멈추거나 오래 걸릴 수 있음**
+- **노드에 남는/막히는 Pod**: `emptyDir` 데이터가 있는 Pod, local PV 등은 정책/옵션에 따라 삭제가 막히거나 데이터 유실 이슈가 생길 수 있음
+
+---
+
+## 2) 시간 소요는?
+
+정확한 “고정 시간”은 없고, 아래 요소의 합으로 결정됩니다.
+
+### (A) 종료/퇴거(Evict) 시간
+- `terminationGracePeriodSeconds` (기본 30s)  
+- 앱이 SIGTERM 받고 **정리 종료**를 얼마나 빨리 하는지
+- **PDB** 때문에 한 번에 못 빼면 대기 발생
+
+### (B) 재스케줄/기동 시간
+- 스케줄링 자체는 보통 빠르지만,
+- **이미지 pull**(캐시 없으면 오래 걸림)
+- **볼륨 attach/detach(EBS)**  
+- **ReadinessProbe** 통과까지의 시간(앱 웜업 포함)
+
+> 체감상은 보통 **수십 초 ~ 수분** 범위에서 많이 끝나지만,  
+> PDB/볼륨/이미지 pull/웜업이 크면 **더 길어질 수 있습니다**(특히 Stateful 워크로드).
+
+---
+
+## 3) “어떻게 삭제하느냐”가 제일 중요
+
+### ✅ 권장: cordon + drain 후 노드 제거(또는 노드그룹 스케일다운)
+```bash
+kubectl cordon <node-name>
+kubectl drain <node-name> --ignore-daemonsets --delete-emptydir-data
+```
+
+그 다음에
+- Managed Node Group이면: **노드그룹 desired 감소**(eksctl scale nodegroup / 콘솔 / ASG)
+- 또는 eksctl로 nodegroup 삭제
+
+### ❌ 비권장: 인스턴스 강제 terminate / node 오브젝트만 delete
+- 갑자기 노드가 죽으면 Pod가 **정상 종료 절차를 못 밟고**,  
+  일부는 **Terminating/Unknown** 상태로 오래 남거나,
+- 스토리지 detach가 꼬이면 복구가 늦어질 수 있습니다.
+
+---
+
+## 4) 체크 포인트(이전/시간 확인)
+
+### drain 진행 확인
+```bash
+kubectl get pods -A -o wide | grep <node-name>
+kubectl describe node <node-name> | egrep -i "unschedulable|taint|condition"
+```
+
+### 이벤트로 막히는 원인 확인(PDB, 볼륨 등)
+```bash
+kubectl get events -A --sort-by=.lastTimestamp | tail -n 50
+```
+
+---
+
+*작성일: 2026-02-03 (Asia/Seoul 기준)*
