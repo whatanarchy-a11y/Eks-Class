@@ -76,7 +76,7 @@ metadata:
   name: mysql
 spec:
   type: ExternalName
-  externalName: usermgmtdb.c7hldelt9xfp.us-east-1.rds.amazonaws.com
+  externalName: usermgmtdb.cg0ugoglztrn.ap-northeast-2.rds.amazonaws.com
 ```
  - **매니페스트 배포**
 ```
@@ -84,7 +84,7 @@ kubectl apply -f kube-manifests/01-MySQL-externalName-Service.yml
 ```
 ## Step-04: kubectl로 RDS DB에 연결하고 usermgmt 스키마/DB 생성
 ```
-kubectl run -it --rm --image=mysql:latest --restart=Never mysql-client -- mysql -h usermgmtdb.c7hldelt9xfp.us-east-1.rds.amazonaws.com -u dbadmin -pdbpassword11
+kubectl run -it --rm --image=mysql:latest --restart=Never mysql-client -- mysql -h usermgmtdb.cg0ugoglztrn.ap-northeast-2.rds.amazonaws.com -u dbadmin -pdbpassword11
 
 mysql> show schemas;
 mysql> create database usermgmt;
