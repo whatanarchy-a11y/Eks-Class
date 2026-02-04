@@ -239,4 +239,11 @@ kubectl get events -A --sort-by=.lastTimestamp | tail -n 50
 
 ---
 
-*작성일: 2026-02-03 (Asia/Seoul 기준)*
+### 삭제 전 필요 작업
+```
+ubuntu@DESKTOP-8FSFFJK:~/Eks-Class$ aws --profile "default" --region "ap-northeast-2" cloudformation update-termination-protection   --stack-name eksctl-eksdem
+o1-cluster   --no-enable-termination-protection
+{
+    "StackId": "arn:aws:cloudformation:ap-northeast-2:086015456585:stack/eksctl-eksdemo1-cluster/bc064830-0009-11f1-a846-020a1fbd0057"
+}
+```
