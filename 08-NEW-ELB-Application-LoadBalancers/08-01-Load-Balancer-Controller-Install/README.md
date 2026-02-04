@@ -188,7 +188,102 @@ Kalyans-MacBook-Pro:08-01-Load-Balancer-Controller-Install kdaida$
 # Policy ARN
 Policy ARN:  arn:aws:iam::086015456585:policy/AWSLoadBalancerControllerIAMPolicy
 ```
+---
+# kube-system ServiceAccount 목록에 `*-controller`가 보이는 이유 (정리)
 
+아래 출력은 `kube-system` 네임스페이스의 **ServiceAccount(SA)** 목록입니다.
+
+```bash
+kubectl get sa -n kube-system
+```
+
+---
+
+## 1) SA는 우리가 생각하는 “일반 계정(User)”이 아님
+
+쿠버네티스에서 인증 주체는 크게 두 부류로 나눠서 이해하면 편합니다.
+
+- **User(사람/외부 계정)**  
+  - `kubectl`을 사용하는 개발자/운영자 계정  
+  - 보통 kubeconfig, OIDC, IAM 등 **클러스터 외부 인증**을 통해 들어옴
+
+- **ServiceAccount(클러스터 내부 계정)**  
+  - **Pod(워크로드)** 가 Kubernetes API를 호출할 때 쓰는 계정  
+  - **네임스페이스에 속하는 리소스** (예: `kube-system`)
+
+즉, `kubectl get sa -n kube-system`은 “사람 계정 목록”이 아니라  
+**`kube-system` 안에서 파드들이 사용할 수 있는 서비스 계정 목록**입니다.
+
+---
+
+## 2) 왜 `controller` 이름이 SA 목록에 보이냐?
+
+`kube-system`에는 컨트롤러/애드온/에이전트가 많고, 이들은 Kubernetes API 서버에 접근이 필요합니다.
+
+예시:
+- 컨트롤러(원하는 상태로 맞추는 control loop)
+- `metrics-server`
+- `aws-node` (VPC CNI)
+- `external-dns`, `cluster-autoscaler`
+- `AWS Load Balancer Controller` 같은 애드온
+
+이런 구성요소들은 대개 **Pod로 실행**되며,
+Pod가 API 접근 권한을 갖기 위해 **전용 ServiceAccount**를 지정해 실행합니다.
+
+그래서 SA 이름이 `deployment-controller`, `job-controller`처럼 보이는 것은 정상입니다.
+
+> 정리: **컨트롤러(파드) → API 호출 필요 → 그 파드가 사용할 SA 필요 → `*-controller` SA가 목록에 나타남**
+
+---
+
+## 3) “System Account”라는 표현의 의미
+
+질문에서 말한 “System Account”는 보통  
+**kube-system 네임스페이스의 시스템 컴포넌트/애드온이 사용하는 SA**를 의미하는 표현입니다.
+
+쿠버네티스 용어로는 별도의 타입이 있는 게 아니라 그냥 **ServiceAccount**이며,
+시스템/일반 구분은 “어디에서/무엇을 위해/어떤 권한으로 쓰는가”에 의해 결정됩니다.
+
+---
+
+## 4) `SECRETS 0`은 왜 이렇게 많이 보이나?
+
+최근 쿠버네티스는 예전처럼 SA마다 **자동으로 Secret 기반 토큰을 만들지 않는 방향**이 일반적입니다.
+
+대신:
+- Pod가 필요할 때 **BoundServiceAccountTokenVolume** 방식으로
+  **짧게 유효한 토큰**을 볼륨 형태로 받아 사용하는 패턴이 흔합니다.
+
+그래서 `SECRETS 0`이 보이는 것은 이상이 아니라 자연스러운 상태일 수 있습니다.
+
+---
+
+## 5) 확인하면 더 명확해지는 명령어
+
+### 5-1) SA 상세 확인
+```bash
+kubectl -n kube-system describe sa <sa-name>
+```
+
+### 5-2) 어떤 파드가 그 SA를 쓰는지 찾기
+```bash
+kubectl -n kube-system get pod -o custom-columns=NAME:.metadata.name,SA:.spec.serviceAccountName | grep <sa-name>
+```
+
+### 5-3) 그 SA가 실제로 뭘 할 수 있는지(권한 테스트)
+```bash
+kubectl auth can-i --as=system:serviceaccount:kube-system:<sa-name> get pods -n kube-system
+kubectl auth can-i --as=system:serviceaccount:kube-system:<sa-name> '*' '*' -n kube-system
+```
+
+---
+
+## 결론
+
+- **SA는 “사람 계정”이 아니라 “클러스터 내부 워크로드(파드)용 계정”**
+- `kube-system`에는 컨트롤러/애드온이 많아서 `*-controller` 같은 **전용 SA가 많이 보이는 게 정상**
+- `SECRETS 0`도 최신 토큰 방식에선 자연스러운 상태일 수 있음
+---
 
 ## 단계-03: AWS LoadBalancer Controller용 IAM Role 생성 및 Kubernetes Service Account에 연결
 - `eksctl`로 관리되는 클러스터에만 적용됩니다.
@@ -204,21 +299,34 @@ kubectl get sa aws-load-balancer-controller -n kube-system
 1. "aws-load-balancer-controller" 이름의 Service Account가 없어야 합니다.
 
 # 템플릿
+#Note:  K8S Service Account Name that need to be bound to newly created IAM Role
 eksctl create iamserviceaccount \
-  --cluster=my_cluster \
-  --namespace=kube-system \
-  --name=aws-load-balancer-controller \ #Note:  K8S Service Account Name that need to be bound to newly created IAM Role
-  --attach-policy-arn=arn:aws:iam::111122223333:policy/AWSLoadBalancerControllerIAMPolicy \
+  --cluster eksdemo2 \
+  --namespace kube-system \
+  --name aws-load-balancer-controller \
+  --attach-policy-arn arn:aws:iam::086015456585:policy/AWSLoadBalancerControllerIAMPolicy \
   --override-existing-serviceaccounts \
   --approve
+```
 
+---
+```
+1) OIDC Provider 연결(associate)
+아래 명령을 그대로 실행하세요. (region은 이미 안내된 ap-northeast-2)
+eksctl utils associate-iam-oidc-provider \
+  --region ap-northeast-2 \
+  --cluster eksdemo2 \
+  --approve
+
+```
+---
 
 # name, cluster, policy arn을 실제 값으로 교체(단계-02에서 기록한 Policy ARN 사용)
 eksctl create iamserviceaccount \
-  --cluster=eksdemo1 \
-  --namespace=kube-system \
-  --name=aws-load-balancer-controller \
-  --attach-policy-arn=arn:aws:iam::180789647333:policy/AWSLoadBalancerControllerIAMPolicy \
+  --cluster eksdemo2 \
+  --namespace kube-system \
+  --name aws-load-balancer-controller \
+  --attach-policy-arn arn:aws:iam::086015456585:policy/AWSLoadBalancerControllerIAMPolicy \
   --override-existing-serviceaccounts \
   --approve
 ```
@@ -252,8 +360,16 @@ Kalyans-MacBook-Pro:08-01-Load-Balancer-Controller-Install kdaida$
 ### 단계-03-02: eksctl CLI로 확인
 ```t
 # IAM Service Account 조회
-eksctl  get iamserviceaccount --cluster eksdemo1
-
+eksctl  get iamserviceaccount --cluster eksdemo2
+```
+---
+```
+ubuntu@DESKTOP-8FSFFJK:~/Eks-Class/08-NEW-ELB-Application-LoadBalancers/08-01-Load-Balancer-Controller-Install$ eksctl  get iamserviceaccount --cluster eksdemo2
+NAMESPACE       NAME                            ROLE ARN
+kube-system     aws-load-balancer-controller    arn:aws:iam::086015456585:role/eksctl-eksdemo2-addon-iamserviceaccount-kube--Role1-SzVF2cHG1MuR
+```
+---
+```
 # 출력 예시
 Kalyans-MacBook-Pro:08-01-Load-Balancer-Controller-Install kdaida$ eksctl  get iamserviceaccount --cluster eksdemo1
 2022-02-02 10:23:50 [ℹ]  eksctl version 0.82.0
@@ -269,6 +385,8 @@ Kalyans-MacBook-Pro:08-01-Load-Balancer-Controller-Install kdaida$
 - **Resources** 탭 클릭
 - **Physical Id**의 링크를 클릭해 IAM Role 열기
 - **eksctl-eksdemo1-addon-iamserviceaccount-kube-Role1-WFAWGQKTAVLR**가 연결되어 있는지 확인
+
+![alt text](image.png)
 
 ### 단계-03-04: kubectl로 K8s Service Account 확인
 ```t
@@ -308,6 +426,13 @@ brew install helm
 # Helm 버전 확인
 helm version
 ```
+### WSL 에서 설치
+```
+sudo snap install helm --classic
+```
+---
+
+
 ### 단계-04-02: AWS Load Balancer Controller 설치
 - **중요 1:** IMDS 접근이 제한된 Amazon EC2 노드에 컨트롤러를 배포하거나 Fargate에 배포하는 경우 다음 플래그를 추가하세요.
 ```t
@@ -333,11 +458,11 @@ helm repo update
 ## 템플릿
 helm install aws-load-balancer-controller eks/aws-load-balancer-controller \
   -n kube-system \
-  --set clusterName=<cluster-name> \
+  --set clusterName=eksdemo2 \
   --set serviceAccount.create=false \
   --set serviceAccount.name=aws-load-balancer-controller \
-  --set region=<region-code> \
-  --set vpcId=<vpc-xxxxxxxx> \
+  --set region=ap-northeast-2 \
+  --set vpcId=vpc-0f871ce4d93d12962 \
   --set image.repository=public.ecr.aws/eks/aws-load-balancer-controller
 
 ## 클러스터 이름, 리전 코드, VPC ID, 이미지 리포지토리 계정/리전 코드를 실제 값으로 교체
@@ -419,22 +544,14 @@ kubectl -n kube-system logs -f aws-load-balancer-controller-86b598cbd6-vqqsk
 ```
 
 ### 단계-04-05: AWS Load Balancer Controller K8s Service Account 내부 확인
-```t
-# Service Account 및 Secret 목록
-kubectl -n kube-system get sa aws-load-balancer-controller
-kubectl -n kube-system get sa aws-load-balancer-controller -o yaml
-kubectl -n kube-system get secret <GET_FROM_PREVIOUS_COMMAND - secrets.name> -o yaml
-kubectl -n kube-system get secret aws-load-balancer-controller-token-5w8th 
-kubectl -n kube-system get secret aws-load-balancer-controller-token-5w8th -o yaml
-## 아래 사이트에서 ca.crt 디코딩
-https://www.base64decode.org/
-https://www.sslchecker.com/certdecoder
 
-## 아래 사이트에서 토큰 디코딩
-https://www.base64decode.org/
+```
 https://jwt.io/
-관찰 사항:
-1. 디코딩된 JWT 토큰 확인
+관찰 사항: 디코딩된 JWT 토큰 확인
+
+kubectl -n kube-system create token aws-load-balancer-controller --duration=10m
+```
+![alt text](image-1.png)
 
 # YAML 형식으로 Deployment 확인
 kubectl -n kube-system get deploy aws-load-balancer-controller -o yaml
@@ -445,7 +562,7 @@ kubectl -n kube-system get deploy aws-load-balancer-controller -o yaml
 # YAML 형식으로 파드 확인
 kubectl -n kube-system get pods
 kubectl -n kube-system get pod <AWS-Load-Balancer-Controller-POD-NAME> -o yaml
-kubectl -n kube-system get pod aws-load-balancer-controller-65b4f64d6c-h2vh4 -o yaml
+kubectl -n kube-system get pod aws-load-balancer-controller-696b745696-n56bg -o yaml
 관찰 사항:
 1. "spec.serviceAccount" 및 "spec.serviceAccountName" 확인
 2. Service Account 이름이 "aws-load-balancer-controller"여야 합니다.
