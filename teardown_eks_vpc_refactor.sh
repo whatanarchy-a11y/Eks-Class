@@ -334,6 +334,12 @@ delete_nat_gateways() {
 detach_delete_igw() {
   local vpc="$1"
   log "Internet gateway detach+delete: $vpc"
+
+  # ✅ 추가: IGW detach 막는 mapped public address 먼저 해제
+  unmap_public_addresses_in_vpc "$vpc"
+  # (선택) 완전 teardown이면 release까지
+  release_eips_in_vpc "$vpc"
+
   local igws
   igws="$($AWS ec2 describe-internet-gateways --filters "Name=attachment.vpc-id,Values=$vpc" \
     --query "InternetGateways[].InternetGatewayId" --output text 2>/dev/null || true)"
@@ -515,6 +521,44 @@ process_vpc() {
   else
     warn "Skip CloudFormation deletion (DELETE_CFN=false)"
   fi
+
+  ################################
+  unmap_public_addresses_in_vpc() {
+  local vpc="$1"
+  log "Unmap public addresses (EIP associations) in VPC: $vpc"
+
+  local assoc_ids
+  assoc_ids="$($AWS ec2 describe-network-interfaces \
+    --filters Name=vpc-id,Values=$vpc \
+    --query "NetworkInterfaces[?Association.AssociationId!=null].Association.AssociationId" \
+    --output text 2>/dev/null || true)"
+
+  assoc_ids="$(echo "$assoc_ids" | tr '\t' '\n' | sed '/^$/d' || true)"
+  [[ -z "$assoc_ids" ]] && { echo "  (no public address associations)"; return; }
+
+  for a in $assoc_ids; do
+    run_or_echo "$AWS ec2 disassociate-address --association-id \"$a\" >/dev/null || true"
+  done
+}
+
+release_eips_in_vpc() {
+  local vpc="$1"
+  log "Release EIPs still associated to ENIs in VPC: $vpc"
+
+  local alloc_ids
+  alloc_ids="$($AWS ec2 describe-network-interfaces \
+    --filters Name=vpc-id,Values=$vpc \
+    --query "NetworkInterfaces[?Association.AllocationId!=null].Association.AllocationId" \
+    --output text 2>/dev/null || true)"
+
+  alloc_ids="$(echo "$alloc_ids" | tr '\t' '\n' | sed '/^$/d' || true)"
+  [[ -z "$alloc_ids" ]] && { echo "  (no EIP allocations on ENIs)"; return; }
+
+  for alloc in $alloc_ids; do
+    run_or_echo "$AWS ec2 release-address --allocation-id \"$alloc\" >/dev/null || true"
+  done
+}
+
 
   # 4) Core networking teardown
   delete_nat_gateways "$vpc"
