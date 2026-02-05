@@ -29,6 +29,28 @@ aws secretsmanager create-secret \
   --name notif/smtp \
   --secret-string '{"username":"SMTP_USER","password":"SMTP_PASS","from":"verified_from@example.com"}'
 ```
+---
+```
+{
+    "ARN": "arn:aws:secretsmanager:ap-northeast-2:086015456585:secret:notif/smtp-ehaQQu",
+    "Name": "notif/smtp",
+    "VersionId": "90d87fba-9622-4ffd-82f4-ce67704ff645"
+}
+kimdy@DESKTOP-CLQV18N:~/Eks-Class$ aws secretsmanager describe-secret \
+  --secret-id arn:aws:secretsmanager:ap-northeast-2:086015456585:secret:notif/smtp-ehaQQu \
+  --region ap-northeast-2
+{
+    "ARN": "arn:aws:secretsmanager:ap-northeast-2:086015456585:secret:notif/smtp-ehaQQu",
+    "Name": "notif/smtp",
+    "LastChangedDate": "2026-02-05T14:28:42.920000+09:00",
+    "VersionIdsToStages": {
+        "90d87fba-9622-4ffd-82f4-ce67704ff645": [
+            "AWSCURRENT"
+        ]
+    },
+    "CreatedDate": "2026-02-05T14:28:42.887000+09:00"
+```
+
 
 ### B) SSM Parameter Store SecureString (+KMS)
 키를 분리 저장하고 싶을 때 예시:
