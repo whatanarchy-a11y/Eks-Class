@@ -467,3 +467,15 @@ kubectl rollout status deployment/notification-microservice
 
 # ReplicaSets 확인
 kubectl get rs
+
+
+
+---
+```
+ubuntu@DESKTOP-8FSFFJK:~/Eks-Class/12-Microservices-Deployment-on-EKS$ kubectl apply -f notif-deploy.yaml
+deployment.apps/notification-microservice created
+error: resource mapping not found for name: "notif-smtp-spc" namespace: "notifications" from "notif-deploy.yaml": no matches for kind "SecretProviderClass" in version "secrets-store.csi.x-k8s.io/v1"
+ensure CRDs are installed first
+ubuntu@DESKTOP-8FSFFJK:~/Eks-Class/12-Microservices-Deployment-on-EKS$ 
+```
+https://chatgpt.com/share/69843455-56cc-8007-b634-eb05a9877fc0

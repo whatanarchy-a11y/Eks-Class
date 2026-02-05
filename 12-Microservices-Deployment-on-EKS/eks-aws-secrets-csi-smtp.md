@@ -50,6 +50,9 @@ kimdy@DESKTOP-CLQV18N:~/Eks-Class$ aws secretsmanager describe-secret \
     },
     "CreatedDate": "2026-02-05T14:28:42.887000+09:00"
 ```
+---
+![alt text](image-1.png)
+---
 
 
 ### B) SSM Parameter Store SecureString (+KMS)
